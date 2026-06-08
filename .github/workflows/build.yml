@@ -1,0 +1,115 @@
+name: Build 发票助手
+
+on:
+  push:
+    tags:
+      - 'v*'          # 推送 tag 如 v1.0.0 时自动构建
+    workflow_dispatch:  # 也支持手动触发
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install PyQt5 PyMuPDF Pillow pyinstaller
+
+      - name: Generate icon (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          python3 -c "
+          from PIL import Image
+          img = Image.open('app/icon.png')
+          import os
+          os.makedirs('app/icon.iconset', exist_ok=True)
+          for s in [16,32,64,128,256,512]:
+              r = img.resize((s,s), Image.LANCZOS)
+              r.save(f'app/icon.iconset/icon_{s}x{s}.png')
+          "
+          iconutil -c icns app/icon.iconset -o app/icon.icns
+
+      - name: Build with PyInstaller (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          pyinstaller --clean --noconfirm \
+            --name "InvoicePrinter" \
+            --icon "app/icon.icns" \
+            --windowed \
+            --add-data "app:app" \
+            --hidden-import PyQt5.QtPrintSupport \
+            --hidden-import PyQt5.QtSvg \
+            --hidden-import PIL \
+            main.py
+          cd dist
+          zip -r InvoicePrinter_macOS.zip InvoicePrinter.app
+
+      - name: Build with PyInstaller (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          pyinstaller --clean --noconfirm `
+            --name "InvoicePrinter" `
+            --icon "app/icon.png" `
+            --windowed `
+            --add-data "app;app" `
+            --hidden-import PyQt5.QtPrintSupport `
+            --hidden-import PyQt5.QtSvg `
+            --hidden-import PIL `
+            main.py
+          Compress-Archive -Path dist/InvoicePrinter -DestinationPath dist/InvoicePrinter_Windows.zip
+
+      - name: Upload artifact (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: InvoicePrinter_macOS
+          path: dist/InvoicePrinter_macOS.zip
+
+      - name: Upload artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: InvoicePrinter_Windows
+          path: dist/InvoicePrinter_Windows.zip
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            InvoicePrinter_macOS/InvoicePrinter_macOS.zip
+            InvoicePrinter_Windows/InvoicePrinter_Windows.zip
+          body: |
+            ## 发票助手 InvoicePrinter
+
+            ### 功能
+            - 批量导入发票文件（PDF/图片）
+            - 点击文件名即时预览
+            - 自动2合1排版打印（A4每页2张，A5每页1张）
+            - 中文打印设置（纸张/方向/份数）
+            - 打印预览
+
+            ### 下载
+            - 🍎 macOS: InvoicePrinter_macOS.zip
+            - 🪟 Windows: InvoicePrinter_Windows.zip
+          draft: false
+          prerelease: false
