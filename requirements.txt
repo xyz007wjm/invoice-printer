@@ -1,0 +1,14 @@
+# 发票助手 - 依赖清单
+# pip install -i https://mirrors.aliyun.com/pypi/simple/ -r requirements.txt
+
+# GUI
+PyQt5>=5.15.0
+
+# PDF处理（如不需要打印PDF文件可跳过）
+PyMuPDF>=1.23.0
+
+# 图片处理
+Pillow>=10.0.0
+
+# OpenCV（用于图片缩放显示，可选）
+opencv-python>=4.8.0
